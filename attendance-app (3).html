@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>נוכחות עובדים</title>
+<meta name="theme-color" content="#0f172a"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Segoe UI',Arial,sans-serif;direction:rtl;background:#0f172a;min-height:100vh;color:white;}
+input,select,button,textarea{font-family:inherit;}
+.card{background:#1e293b;border-radius:16px;border:1px solid rgba(255,255,255,0.08);}
+button{cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect}=React;
+
+const SK="attendance_v1";
+const load=()=>{try{const r=localStorage.getItem(SK);return r?JSON.parse(r):null;}catch{return null;}};
+const save=s=>{try{localStorage.setItem(SK,JSON.stringify(s));}catch{}};
+
+const todayKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;};
+const fmtDate=()=>new Date().toLocaleDateString("he-IL",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+const STATUSES=[
+  {id:"present",label:"נמצא",emoji:"✅",color:"#22c55e",bg:"rgba(34,197,94,0.15)"},
+  {id:"sick",label:"מחלה",emoji:"🤒",color:"#f97316",bg:"rgba(249,115,22,0.15)"},
+  {id:"vacation",label:"חופש",emoji:"🏖️",color:"#3b82f6",bg:"rgba(59,130,246,0.15)"},
+  {id:"wfh",label:"עובד מהבית",emoji:"🏠",color:"#a855f7",bg:"rgba(168,85,247,0.15)"},
+];
+
+const DEFAULT_EMPLOYEES=[
+  "אורלי","אורן","אורנה","איל","אינה","אלמוג","אסתי ברוכי","אריה","ג'וס","דוד",
+  "הילה בסאן","הילה מורי","חיה","חיה טוויל","חלי","חלי כהן","חן אמר","טל","טל מדלסי",
+  "כוכבה","לנה","מיטל","מירב","מירי","מלי","סוסו","סילבי ברכה","סילבי חן",
+  "עדי אמר","עדי גיא","עדי שטיינר","ליאם","עינת","פרננדה","קלמן","רבקה בר","רויטל",
+  "רעות גרימברג","שירה חרבי","תקוה","טניה","ענת","קארין","דוניא","אנה","גילי","מורן",
+  "מיקי","עדי","צליל סער","רעות אינגבר","שירלי","אלעד","ליטל","לילב","ורד נשטיר",
+  "ספיר מנור","אורון","אסתי","גלית","רונית","זויה","כוכי","מור","נטלי","שרית",
+  "אלון","סיגל","חנית","מתן","אלגריה","ענת","מריאנה","מיטל"
+].map((name,i)=>({id:i+1,name,role:"עובד",joinDate:"2024-01-01"}));
+
+const initState=()=>{
+  const saved=load();
+  if(saved&&saved.employees&&saved.employees.length>0) return saved;
+  return {employees:DEFAULT_EMPLOYEES,attendance:{},currentUser:null,isAdmin:false};
+};
+
+function App(){
+  const [st,setSt]=useState(initState);
+  const [screen,setScreen]=useState("splash");
+  const [regName,setRegName]=useState("");
+  const [regRole,setRegRole]=useState("עובד");
+  const [adminPass,setAdminPass]=useState("");
+  const [adminMode,setAdminMode]=useState(false);
+  const [newEmpName,setNewEmpName]=useState("");
+  const [showTable,setShowTable]=useState(false);
+
+  useEffect(()=>{
+    const s=load();
+    if(s?.currentUser) setTimeout(()=>setScreen("main"),1200);
+    else setTimeout(()=>setScreen("login"),1200);
+  },[]);
+
+  const commit=next=>{setSt(next);save(next);};
+
+  const today=todayKey();
+  const todayAtt=st.attendance[today]||{};
+
+  const register=()=>{
+    if(!regName.trim())return;
+    const exists=st.employees.find(e=>e.name.toLowerCase()===regName.trim().toLowerCase());
+    if(exists){commit({...st,currentUser:exists});setScreen("main");return;}
+    const emp={id:Date.now(),name:regName.trim(),role:regRole,joinDate:today};
+    const next={...st,employees:[...st.employees,emp],currentUser:emp};
+    commit(next);setScreen("main");
+  };
+
+  const setStatus=(empId,statusId)=>{
+    const att={...st.attendance,[today]:{...todayAtt,[empId]:statusId}};
+    commit({...st,attendance:att});
+  };
+
+  const addEmployee=()=>{
+    if(!newEmpName.trim())return;
+    const emp={id:Date.now(),name:newEmpName.trim(),role:"עובד",joinDate:today};
+    commit({...st,employees:[...st.employees,emp]});
+    setNewEmpName("");
+  };
+
+  const removeEmployee=id=>{
+    commit({...st,employees:st.employees.filter(e=>e.id!==id)});
+  };
+
+  const resetToday=()=>{
+    const att={...st.attendance};
+    delete att[today];
+    commit({...st,attendance:att});
+  };
+
+  const printTable=()=>{
+    const rows=st.employees.map(e=>{
+      const sid=todayAtt[e.id]||null;
+      const s=STATUSES.find(x=>x.id===sid);
+      return `<tr><td>${e.name}</td><td>${e.role}</td><td>${s?s.emoji+" "+s.label:"לא דיווח"}</td></tr>`;
+    }).join("");
+    const win=window.open("","_blank");
+    win.document.write(`<html dir="rtl"><head><meta charset="UTF-8"><title>דוח נוכחות</title>
+    <style>body{font-family:Arial;direction:rtl;}table{border-collapse:collapse;width:100%;}
+    th,td{border:1px solid #ccc;padding:10px;text-align:right;}th{background:#f0f0f0;}
+    h2{margin-bottom:10px;}</style></head><body>
+    <h2>דוח נוכחות – ${fmtDate()}</h2>
+    <table><thead><tr><th>שם</th><th>תפקיד</th><th>סטטוס</th></tr></thead>
+    <tbody>${rows}</tbody></table></body></html>`);
+    win.document.close();
+    win.print();
+  };
+
+  // ── SPLASH ──
+  if(screen==="splash") return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,background:"linear-gradient(160deg,#0f172a,#1e1060)"}}>
+      <div style={{fontSize:64}}>📋</div>
+      <div style={{fontWeight:900,fontSize:24}}>נוכחות עובדים</div>
+      <div style={{color:"rgba(255,255,255,0.4)",fontSize:13}}>מערכת דיווח יומית</div>
+    </div>
+  );
+
+  // ── LOGIN ──
+  if(screen==="login") return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:"linear-gradient(160deg,#0f172a,#1e1060)"}}>
+      <div style={{fontSize:52,marginBottom:12}}>📋</div>
+      <div style={{fontWeight:900,fontSize:22,marginBottom:4}}>נוכחות עובדים</div>
+      <div style={{color:"rgba(255,255,255,0.4)",fontSize:12,marginBottom:32}}>דיווח נוכחות יומי</div>
+      <div className="card" style={{padding:24,width:"100%",maxWidth:360}}>
+        <div style={{fontWeight:700,fontSize:16,marginBottom:18,textAlign:"center"}}>כניסה / הרשמה</div>
+        <label style={{color:"rgba(255,255,255,0.5)",fontSize:12,display:"block",marginBottom:5}}>שם מלא</label>
+        <input value={regName} onChange={e=>setRegName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&register()}
+          placeholder="הכנס שם מלא..."
+          style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:14,marginBottom:14,outline:"none"}}/>
+        <label style={{color:"rgba(255,255,255,0.5)",fontSize:12,display:"block",marginBottom:5}}>תפקיד</label>
+        <select value={regRole} onChange={e=>setRegRole(e.target.value)}
+          style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"#1e293b",color:"white",fontSize:14,marginBottom:22,outline:"none"}}>
+          {["עובד","מנהל","מזכירה","מנהל מכירות","נציג שירות","אחר"].map(r=><option key={r}>{r}</option>)}
+        </select>
+        <button onClick={register} style={{background:"linear-gradient(135deg,#6366f1,#3b82f6)",color:"white",border:"none",padding:13,width:"100%",borderRadius:12,fontWeight:700,fontSize:15}}>
+          כניסה למערכת ✅
+        </button>
+        <div style={{color:"rgba(255,255,255,0.25)",fontSize:11,textAlign:"center",marginTop:12}}>עובד חדש? פשוט הכנס שמך ותירשם אוטומטית</div>
+      </div>
+    </div>
+  );
+
+  // ── MAIN ──
+  const cu=st.currentUser;
+  const myStatus=todayAtt[cu?.id]||null;
+  const reported=Object.keys(todayAtt).length;
+  const total=st.employees.length;
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0f172a",maxWidth:500,margin:"0 auto",paddingBottom:20}}>
+
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,#1e293b,#1e1060)",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:15}}>📋 נוכחות עובדים</div>
+          <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:1}}>{fmtDate()}</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{background:"rgba(255,255,255,0.07)",borderRadius:20,padding:"4px 10px",fontSize:11,color:"rgba(255,255,255,0.5)"}}>
+            {reported}/{total} דיווחו
+          </div>
+          <button onClick={()=>{commit({...st,currentUser:null});setScreen("login");}}
+            style={{background:"transparent",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)",borderRadius:8,padding:"4px 8px",fontSize:11}}>יציאה</button>
+        </div>
+      </div>
+
+      <div style={{padding:"14px 14px 0"}}>
+
+        {/* הסטטוס שלי */}
+        <div className="card" style={{padding:16,marginBottom:14}}>
+          <div style={{fontWeight:700,marginBottom:12,fontSize:14}}>
+            שלום {cu?.name} 👋 – מה הסטטוס שלך היום?
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {STATUSES.map(s=>(
+              <button key={s.id} onClick={()=>setStatus(cu.id,s.id)}
+                style={{padding:"12px 8px",borderRadius:12,border:`2px solid ${myStatus===s.id?s.color:"rgba(255,255,255,0.1)"}`,
+                  background:myStatus===s.id?s.bg:"rgba(255,255,255,0.03)",
+                  color:myStatus===s.id?s.color:"rgba(255,255,255,0.6)",
+                  fontWeight:myStatus===s.id?700:400,fontSize:14,transition:"all 0.2s",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <span style={{fontSize:24}}>{s.emoji}</span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+          {myStatus&&(
+            <div style={{marginTop:12,background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"8px 12px",color:"rgba(255,255,255,0.5)",fontSize:12,textAlign:"center"}}>
+              ✅ הסטטוס שלך נשמר – {STATUSES.find(x=>x.id===myStatus)?.emoji} {STATUSES.find(x=>x.id===myStatus)?.label}
+            </div>
+          )}
+        </div>
+
+        {/* טבלת נוכחות */}
+        <div className="card" style={{padding:14,marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:14}}>📊 נוכחות היום</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowTable(!showTable)}
+                style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.7)",borderRadius:8,padding:"5px 10px",fontSize:12}}>
+                {showTable?"הסתר":"הצג טבלה"}
+              </button>
+              <button onClick={printTable}
+                style={{background:"linear-gradient(135deg,#6366f1,#3b82f6)",border:"none",color:"white",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600}}>
+                🖨️ הדפס
+              </button>
+            </div>
+          </div>
+
+          {/* סיכום */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:showTable?12:0}}>
+            {STATUSES.map(s=>{
+              const cnt=Object.values(todayAtt).filter(v=>v===s.id).length;
+              return(
+                <div key={s.id} style={{background:s.bg,border:`1px solid ${s.color}33`,borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
+                  <div style={{fontSize:20}}>{s.emoji}</div>
+                  <div style={{color:s.color,fontWeight:700,fontSize:18}}>{cnt}</div>
+                  <div style={{color:"rgba(255,255,255,0.5)",fontSize:10}}>{s.label}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* טבלה מפורטת */}
+          {showTable&&(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+                    {["שם","תפקיד","סטטוס"].map(h=>(
+                      <th key={h} style={{padding:"8px 6px",color:"rgba(255,255,255,0.5)",fontWeight:600,textAlign:"right"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {st.employees.map(e=>{
+                    const sid=todayAtt[e.id]||null;
+                    const s=STATUSES.find(x=>x.id===sid);
+                    return(
+                      <tr key={e.id} style={{borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                        <td style={{padding:"9px 6px",color:"white",fontWeight:e.id===cu?.id?700:400}}>{e.name}{e.id===cu?.id?" (את/ה)":""}</td>
+                        <td style={{padding:"9px 6px",color:"rgba(255,255,255,0.5)",fontSize:12}}>{e.role}</td>
+                        <td style={{padding:"9px 6px"}}>
+                          {s
+                            ? <span style={{color:s.color,fontWeight:600}}>{s.emoji} {s.label}</span>
+                            : <span style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>לא דיווח</span>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {st.employees.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:20,fontSize:13}}>אין עובדים רשומים עדיין</div>}
+            </div>
+          )}
+        </div>
+
+        {/* ניהול עובדים */}
+        <div className="card" style={{padding:14,marginBottom:14}}>
+          <button onClick={()=>setAdminMode(!adminMode)}
+            style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.5)",fontSize:13,width:"100%",textAlign:"right",padding:0,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>⚙️ ניהול עובדים</span>
+            <span style={{fontSize:10}}>{adminMode?"▲":"▼"}</span>
+          </button>
+
+          {adminMode&&(
+            <div style={{marginTop:14}}>
+              {/* הוספת עובד */}
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                <input value={newEmpName} onChange={e=>setNewEmpName(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&addEmployee()}
+                  placeholder="שם עובד חדש..."
+                  style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"white",fontSize:13,outline:"none"}}/>
+                <button onClick={addEmployee}
+                  style={{background:"linear-gradient(135deg,#22c55e,#16a34a)",color:"white",border:"none",borderRadius:10,padding:"9px 14px",fontWeight:700,fontSize:13}}>
+                  + הוסף
+                </button>
+              </div>
+
+              {/* רשימת עובדים */}
+              {st.employees.map(e=>(
+                <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                  <span style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{e.name} <span style={{color:"rgba(255,255,255,0.3)",fontSize:11}}>({e.role})</span></span>
+                  <button onClick={()=>removeEmployee(e.id)}
+                    style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",color:"#f87171",borderRadius:8,padding:"3px 10px",fontSize:12}}>
+                    הסר
+                  </button>
+                </div>
+              ))}
+
+              <button onClick={resetToday}
+                style={{marginTop:14,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",color:"#f87171",borderRadius:10,padding:"9px",width:"100%",fontSize:13}}>
+                🔄 איפוס נוכחות היום
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("app")).render(<App/>);
+</script>
+</body>
+</html>
